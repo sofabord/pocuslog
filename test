@@ -1,0 +1,188 @@
+import { useState, useEffect } from 'react'
+import { Card, CardContent } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+
+export default function POCUSLogger() {
+  const [entries, setEntries] = useState([])
+  const [filterOperator, setFilterOperator] = useState('Alle')
+  const [form, setForm] = useState({
+    scanningstype: '',
+    indikation: '',
+    fund: '',
+    konsekvens: '',
+    operator: ''
+  })
+
+  /* ---------- Lokal lagring ---------- */
+  useEffect(() => {
+    const stored = localStorage.getItem('pocusEntries')
+    if (stored) setEntries(JSON.parse(stored))
+  }, [])
+
+  useEffect(() => {
+    localStorage.setItem('pocusEntries', JSON.stringify(entries))
+  }, [entries])
+
+  /* ---------- Gem erfaring ---------- */
+  const handleSubmit = () => {
+    if (!form.operator || !form.scanningstype) return
+
+    const newEntry = {
+      datetime: new Date().toLocaleString('da-DK'),
+      ...form
+    }
+
+    setEntries([newEntry, ...entries])
+    setForm({
+      scanningstype: '',
+      indikation: '',
+      fund: '',
+      konsekvens: '',
+      operator: ''
+    })
+  }
+
+  /* ---------- CSV eksport ---------- */
+  const exportCSV = () => {
+    const header = ['DatoTid', 'Scanningstype', 'Indikation', 'Fund', 'Konsekvens', 'Operatør']
+
+    const rows = entries.map(e => [
+      e.datetime,
+      e.scanningstype,
+      e.indikation,
+      e.fund.replace(/\n/g, ' '),
+      e.konsekvens,
+      e.operator
+    ])
+
+    const csv = [header, ...rows]
+      .map(r => r.map(v => `"${v}"`).join(';'))
+      .join('\n')
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', 'pocus_log_erfaring.csv')
+    link.click()
+  }
+
+  /* ---------- Overblik ---------- */
+  const operators = ['Alle', ...new Set(entries.map(e => e.operator))]
+
+  const filteredEntries =
+    filterOperator === 'Alle'
+      ? entries
+      : entries.filter(e => e.operator === filterOperator)
+
+  const statsByType = filteredEntries.reduce((acc, e) => {
+    acc[e.scanningstype] = (acc[e.scanningstype] || 0) + 1
+    return acc
+  }, {})
+
+  return (
+    <div className="max-w-md mx-auto p-4 space-y-4">
+      <h1 className="text-xl font-bold">POCUS‑erfaringslog</h1>
+      <p className="text-sm text-muted-foreground">
+        Intern log til opfølgning på individuel ultralydserfaring (uden CPR/journalstatus)
+      </p>
+
+      {/* ---------- OVERBLIK ---------- */}
+      <Card>
+        <CardContent className="p-4 space-y-3">
+          <div className="font-semibold">Overblik</div>
+
+          <Select value={filterOperator} onValueChange={setFilterOperator}>
+            <SelectTrigger>
+              <SelectValue placeholder="Filtrér på operatør" />
+            </SelectTrigger>
+            <SelectContent>
+              {operators.map(op => (
+                <SelectItem key={op} value={op}>{op}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <div className="text-sm">
+            Samlet antal scanninger: <b>{filteredEntries.length}</b>
+          </div>
+
+          <div className="text-sm space-y-1">
+            {Object.entries(statsByType).map(([type, count]) => (
+              <div key={type}>{type}: {count}</div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ---------- REGISTRERING ---------- */}
+      <Card>
+        <CardContent className="space-y-3 p-4">
+          <div className="font-semibold">Ny registrering</div>
+
+          <Select
+            value={form.scanningstype}
+            onValueChange={v => setForm({ ...form, scanningstype: v })}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Scanningstype" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="Lunge">Lunge</SelectItem>
+              <SelectItem value="Blære">Blære</SelectItem>
+              <SelectItem value="Nyre">Nyre</SelectItem>
+              <SelectItem value="PVK/a-gas">PVK/a‑gas</SelectItem>
+              <SelectItem value="FATE">FATE</SelectItem>
+              <SelectItem value="Abdomen">Abdomen</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Input
+            placeholder="Indikation (kort)"
+            value={form.indikation}
+            onChange={e => setForm({ ...form, indikation: e.target.value })}
+          />
+
+          <Textarea
+            placeholder="Fund (kort, til læring)"
+            value={form.fund}
+            onChange={e => setForm({ ...form, fund: e.target.value })}
+          />
+
+          <Select
+            value={form.konsekvens}
+            onValueChange={v => setForm({ ...form, konsekvens: v })}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Klinisk konsekvens" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="Ingen ændring">Ingen ændring</SelectItem>
+              <SelectItem value="Ændret behandling">Ændret behandling</SelectItem>
+              <SelectItem value="Supplerende undersøgelse">Supplerende undersøgelse</SelectItem>
+              <SelectItem value="Konference med specialist">Konference med specialist</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Input
+            placeholder="Operatør (initialer/ID – obligatorisk)"
+            value={form.operator}
+            onChange={e => setForm({ ...form, operator: e.target.value })}
+          />
+
+          <Button className="w-full" onClick={handleSubmit}>
+            Gem erfaring
+          </Button>
+
+          <Button variant="outline" className="w-full" onClick={exportCSV}>
+            Eksportér erfaring (CSV/Excel)
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
