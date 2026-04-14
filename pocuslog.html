@@ -1,0 +1,212 @@
+﻿<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>POCUS-erfaringslog</title>
+
+<style>
+  body {
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    background: #f4f5f7;
+    margin: 0;
+    padding: 16px;
+  }
+  .container {
+    max-width: 480px;
+    margin: auto;
+  }
+  h1 {
+    margin-bottom: 4px;
+  }
+  .subtitle {
+    color: #555;
+    font-size: 14px;
+    margin-bottom: 16px;
+  }
+  .card {
+    background: white;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  }
+  label {
+    font-size: 14px;
+    margin-top: 12px;
+    display: block;
+  }
+  input, select, textarea, button {
+    width: 100%;
+    margin-top: 4px;
+    padding: 10px;
+    font-size: 16px;
+    box-sizing: border-box;
+  }
+  textarea {
+    resize: vertical;
+  }
+  button {
+    margin-top: 12px;
+    background: #2563eb;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  button.secondary {
+    background: white;
+    color: #2563eb;
+    border: 1px solid #2563eb;
+  }
+  .stats {
+    font-size: 14px;
+    margin-top: 8px;
+  }
+</style>
+</head>
+
+<body>
+<div class="container">
+
+  <h1>POCUS-erfaringslog</h1>
+  <div class="subtitle">
+    Intern log til opfølgning på individuel ultralydserfaring (uden CPR/journalstatus)
+  </div>
+
+  <!-- OVERBLIK -->
+  <div class="card">
+    <strong>Overblik</strong>
+
+    <label>Filtrér på operatør</label>
+    <select id="filterOperator"></select>
+
+    <div class="stats" id="stats"></div>
+  </div>
+
+  <!-- REGISTRERING -->
+  <div class="card">
+    <strong>Ny registrering</strong>
+
+    <label>Scanningstype *</label>
+    <select id="scanningstype">
+      <option value="">Vælg</option>
+      <option>Lunge</option>
+      <option>Blære</option>
+      <option>Nyre</option>
+      <option>PVK/a-gas</option>
+      <option>FATE</option>
+      <option>Abdomen</option>
+    </select>
+
+    <label>Indikation (kort)</label>
+    <input id="indikation" type="text">
+
+    <label>Fund (kort, til læring)</label>
+    <textarea id="fund" rows="3"></textarea>
+
+    <label>Klinisk konsekvens</label>
+    <select id="konsekvens">
+      <option>Ingen ændring</option>
+      <option>Ændret behandling</option>
+      <option>Supplerende undersøgelse</option>
+      <option>Konference med specialist</option>
+    </select>
+
+    <label>Operatør (initialer/ID) *</label>
+    <input id="operator" type="text">
+
+    <button onclick="saveEntry()">Gem erfaring</button>
+    <button class="secondary" onclick="exportCSV()">Eksportér CSV / Excel</button>
+  </div>
+
+</div>
+
+<script>
+  let entries = JSON.parse(localStorage.getItem('pocusEntries') || '[]');
+
+  const filterOperator = document.getElementById('filterOperator');
+  const statsDiv = document.getElementById('stats');
+
+  function saveEntry() {
+    const scanningstype = document.getElementById('scanningstype').value;
+    const operator = document.getElementById('operator').value;
+
+    if (!scanningstype || !operator) {
+      alert('Scanningstype og operatør er obligatoriske');
+      return;
+    }
+
+    entries.unshift({
+      datetime: new Date().toLocaleString('da-DK'),
+      scanningstype,
+      indikation: document.getElementById('indikation').value,
+      fund: document.getElementById('fund').value,
+      konsekvens: document.getElementById('konsekvens').value,
+      operator
+    });
+
+    localStorage.setItem('pocusEntries', JSON.stringify(entries));
+    clearForm();
+    render();
+  }
+
+  function clearForm() {
+    document.getElementById('scanningstype').value = '';
+    document.getElementById('indikation').value = '';
+    document.getElementById('fund').value = '';
+    document.getElementById('konsekvens').value = 'Ingen ændring';
+  }
+
+  function render() {
+    const ops = ['Alle', ...new Set(entries.map(e => e.operator))];
+    filterOperator.innerHTML = ops.map(o => `<option>${o}</option>`).join('');
+
+    const selected = filterOperator.value || 'Alle';
+    const filtered = selected === 'Alle'
+      ? entries
+      : entries.filter(e => e.operator === selected);
+
+    const counts = {};
+    filtered.forEach(e => {
+      counts[e.scanningstype] = (counts[e.scanningstype] || 0) + 1;
+    });
+
+    let html = `Samlet antal scanninger: <b>${filtered.length}</b><br>`;
+    for (const k in counts) {
+      html += `${k}: ${counts[k]}<br>`;
+    }
+
+    statsDiv.innerHTML = html;
+    filterOperator.value = selected;
+  }
+
+  filterOperator.addEventListener('change', render);
+
+  function exportCSV() {
+    const header = ['DatoTid','Scanningstype','Indikation','Fund','Konsekvens','Operatør'];
+    const rows = entries.map(e => [
+      e.datetime,
+      e.scanningstype,
+      e.indikation,
+      e.fund.replace(/\\n/g,' '),
+      e.konsekvens,
+      e.operator
+    ]);
+
+    const csv = [header, ...rows]
+      .map(r => r.map(v => `"${v}"`).join(';'))
+      .join('\\n');
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'pocus_erfaringslog.csv';
+    link.click();
+  }
+
+  render();
+</script>
+
+</body>
+</html>
